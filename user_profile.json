@@ -1,0 +1,20 @@
+{
+  "user_name": "Oliver",
+  "user_age": 16,
+  "user_grade": 10,
+    "interests": [
+        "Computer Science",
+        "Robotics",
+        "Hack Club",
+        "Mathematics",
+        "SAT Prep"
+    ],
+    "school": "South Burlington High School",
+  "current_projects": [
+    "Lead coder for robotics FRC Team 11269.",
+    "Establishing and co-captaining a new Hack Club chapter"
+  ],
+  "academic_goals": "Main goal is getting accepted to a top-tier university, specifically MIT or Caltech. Finishing the school year with 4.0 GPA. Over the summer user will be accelerating through pre-calc 1034 at UVM, and trying to achieve a 1500+ on the august SAT.",
+  "class_registration": "User is currently registered for the following AP Classes: Self Study AP Cybersecurity, AP Calculus BC (1 credit), AP Lang and Comp (1 credit), AP Government (0.5 credit), AP Psychology (1 credit), AP Biology (1 credit). User is also taking advanced programming (0.5 credit, is past APCSA), Health (0.5 credit), Latin 3 (1 credit), and 2 P.E classes (0.5 credit each).",
+  "communication_preference": "Keep explanations clear, structured, and avoid a polished or generic AI tone. Be as logical and straightforward as possible, without unnecessary embellishments."
+}

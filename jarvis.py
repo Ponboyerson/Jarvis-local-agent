@@ -1,24 +1,27 @@
-import os
-import datetime
-import webbrowser
-import json
-import ollama
-
-# Google API Libraries
+import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import os
+import json
+import ollama
+import secrets
+import datetime
+import re
+from flask import Flask, request, jsonify, render_template, session
+from werkzeug.security import generate_password_hash, check_password_hash
+from duckduckgo_search import DDGS
 
-# Updated to include Google Drive Read-Only access
 SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/calendar.events',
-    'https://www.googleapis.com/auth/drive.readonly' 
+    'https://www.googleapis.com/auth/drive.metadata.readonly'
 ]
 
-def authenticate_google():
-    """Handles the secure handshake with Google using your credentials.json."""
+def get_google_services():
+    """Authenticates the user and returns the Google API service objects."""
     creds = None
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -27,156 +30,377 @@ def authenticate_google():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not os.path.exists('credentials.json'):
-                print("❌ Error: credentials.json not found in this folder!")
-                return None
             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
-    return creds
 
-# --- Real System Tools ---
+    gmail_service = build('gmail', 'v1', credentials=creds)
+    calendar_service = build('calendar', 'v3', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    return gmail_service, calendar_service, drive_service
 
-def open_browser(url):
-    print(f"\n⚡ [Executing Tool] Opening browser to: {url}")
-    webbrowser.open(url)
-    return f"Success: Opened {url}"
+app = Flask(__name__)
+app.secret_key = os.urandom(24).hex() 
 
-def get_unread_emails():
-    print("\n⚡ [Executing Tool] Fetching unread emails from Gmail...")
-    creds = authenticate_google()
-    if not creds: return "Could not authenticate with Google."
+USERS_FILE = 'users.json'
+MAX_USERS = 5
+ADMIN_USER = "oliver"
+MODEL_NAME = "llama3.2"   # This is the 3B model, which is much better at logic   # More reliable for tool calling
+
+pending_resets = {}
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(USERS_FILE, 'w') as f:
+        json.dump(users, f, indent=4)
+
+def load_user_profile(username):
+    path = f"profile_{username}.json"
+    if os.path.exists(path):
+        with open(path, 'r') as file:
+            return json.load(file)
+    return {}
+
+def save_user_profile(username, profile: dict):
+    with open(f"profile_{username}.json", 'w') as f:
+        json.dump(profile, f, indent=4)
+
+# --- REAL GOOGLE API ACTIONS (no fallback) ---
+def send_email_action(recipient, subject, body, gmail_svc):
+    from email.message import EmailMessage
+    import base64
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg['To'] = recipient
+    msg['Subject'] = subject
+    raw_msg = {'raw': base64.urlsafe_b64encode(msg.as_bytes()).decode()}
+    gmail_svc.users().messages().send(userId="me", body=raw_msg).execute()
+    return f"✅ Email sent to {recipient}."
+
+def add_calendar_event_action(event_title, start_time, end_time, calendar_svc):
+    # This forces the formatting to ensure Google doesn't reject the request
+    # Expecting input like "2026-06-13T13:00:00"
+    # We append "-04:00" for Eastern Daylight Time (June)
+    if "-04:00" not in start_time:
+        start_time = f"{start_time}-04:00"
+    if "-04:00" not in end_time:
+        end_time = f"{end_time}-04:00"
+
+    event = {
+        'summary': event_title,
+        'start': {'dateTime': start_time},
+        'end': {'dateTime': end_time},
+    }
     
+    # Execute the actual API call
+    result = calendar_svc.events().insert(calendarId='primary', body=event).execute()
+    return f"✅ Success! Added '{event_title}' to your calendar."
+
+def search_drive_action(query, drive_svc):
+    results = drive_svc.files().list(
+        q=f"name contains '{query}'", 
+        pageSize=5, 
+        fields="files(name)"
+    ).execute()
+    files = results.get('files', [])
+    if files:
+        return f"📁 Found files: {', '.join([f['name'] for f in files])}"
+    return "No files found."
+
+def web_search_action(query):
     try:
-        service = build('gmail', 'v1', credentials=creds)
-        results = service.users().messages().list(userId='me', q='is:unread', maxResults=5).execute()
-        messages = results.get('messages', [])
-        
-        if not messages:
-            return "You have no unread emails."
-            
-        summary = "Here are your top unread emails:\n"
-        for msg in messages:
-            txt = service.users().messages().get(userId='me', id=msg['id'], format='metadata').execute()
-            headers = txt.get('payload', {}).get('headers', [])
-            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
-            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-            summary += f"- From: {sender} | Subject: {subject}\n"
-        return summary
+        results = DDGS().text(query, max_results=3)
+        if not results: return "No search results."
+        formatted = "\n".join([f"- {res['title']}: {res['body']}" for res in results])
+        return f"🌐 Web search results:\n{formatted}"
     except Exception as e:
-        return f"Error reading Gmail: {e}"
+        return f"Search failed: {e}"
 
-def get_upcoming_events():
-    print("\n⚡ [Executing Tool] Accessing Google Calendar schedule...")
-    creds = authenticate_google()
-    if not creds: return "Could not authenticate with Google."
+# --- KEYWORD FALLBACK (when LLM fails to call tools) ---
+def keyword_fallback(user_message, gmail_svc, cal_svc, drive_svc):
+    msg_lower = user_message.lower()
     
+    # Email detection
+    if "email" in msg_lower or "mail" in msg_lower:
+        # Try to extract recipient, subject, body using simple patterns
+        recipient_match = re.search(r'to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', user_message, re.I)
+        if not recipient_match:
+            return "I need an email address. Please say: 'Send email to address@example.com subject Hello body Hi'"
+        recipient = recipient_match.group(1)
+        
+        subject_match = re.search(r'subject\s+(.+?)(?:\s+body\s+|$)', user_message, re.I)
+        subject = subject_match.group(1) if subject_match else "No subject"
+        
+        body_match = re.search(r'body\s+(.+)$', user_message, re.I)
+        body = body_match.group(1) if body_match else "Message from Jarvis"
+        
+        return send_email_action(recipient, subject, body, gmail_svc)
+    
+    # Calendar detection
+    if "calendar" in msg_lower or "event" in msg_lower or "meeting" in msg_lower:
+        # Expect format: "Add event Title tomorrow at 2pm for 1 hour"
+        title_match = re.search(r'(?:event|meeting)\s+(.+?)\s+(?:on|at|tomorrow|today)', user_message, re.I)
+        title = title_match.group(1) if title_match else "Untitled Event"
+        # For simplicity, use current time + 1 hour as demo
+        now = datetime.datetime.utcnow()
+        start = now.isoformat() + "Z"
+        end = (now + datetime.timedelta(hours=1)).isoformat() + "Z"
+        return add_calendar_event_action(title, start, end, cal_svc)
+    
+    # Drive search
+    if "drive" in msg_lower or "search drive" in msg_lower or "find file" in msg_lower:
+        query_match = re.search(r'(?:search|find)\s+(?:drive\s+)?(?:for\s+)?(.+)$', user_message, re.I)
+        query = query_match.group(1) if query_match else user_message
+        return search_drive_action(query, drive_svc)
+    
+    # Web search
+    if "search" in msg_lower or "google" in msg_lower or "what is" in msg_lower or "who is" in msg_lower:
+        query_match = re.search(r'(?:search|google|what is|who is)\s+(.+)', user_message, re.I)
+        if query_match:
+            return web_search_action(query_match.group(1))
+    
+    return None  # No fallback triggered
+
+# --- TOOL SCHEMA (unchanged but now used with fallback) ---
+AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "send_email",
+            "description": "Send an email.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipient": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"}
+                },
+                "required": ["recipient", "subject", "body"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_calendar_event",
+            "description": "Add calendar event.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_title": {"type": "string"},
+                    "start_time": {"type": "string"},
+                    "end_time": {"type": "string"}
+                },
+                "required": ["event_title", "start_time", "end_time"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_drive",
+            "description": "Search Google Drive.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Web search.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"}
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
+active_sessions = {}
+
+def run_jarvis(username, user_message):
+    global active_sessions
+    if username not in active_sessions:
+        active_sessions[username] = []
+    
+    history = active_sessions[username]
+    is_admin = (username.lower() == ADMIN_USER)
+    
+    # Add system prompt once
+    if is_admin and not any(m.get('role') == 'system' for m in history):
+        history.insert(0, {
+            'role': 'system',
+            'content': 'You are Jarvis, a helpful assistant. Use the provided tools when asked to send emails, add calendar events, search Drive, or search the web. If you cannot use tools, just answer conversationally.'
+        })
+    
+    # Authenticate Google services
     try:
-        service = build('calendar', 'v3', credentials=creds)
-        now = datetime.datetime.utcnow().isoformat() + 'Z' 
-        events_result = service.events().list(calendarId='primary', timeMin=now,
-                                              maxResults=5, singleEvents=True,
-                                              orderBy='startTime').execute()
-        events = events_result.get('items', [])
-        
-        if not events:
-            return "No upcoming events found on your schedule."
-            
-        summary = "Your next upcoming events are:\n"
-        for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            summary += f"- {start}: {event.get('summary')}\n"
-        return summary
+        gmail_svc, cal_svc, drive_svc = get_google_services()
     except Exception as e:
-        return f"Error reading Calendar: {e}"
-
-def list_drive_files():
-    """NEW TOOL: Scans the user's Google Drive for the most recent files."""
-    print("\n⚡ [Executing Tool] Scanning Google Drive...")
-    creds = authenticate_google()
-    if not creds: return "Could not authenticate with Google."
+        return f"Authentication error: {e}"
     
-    try:
-        service = build('drive', 'v3', credentials=creds)
-        # Pulls the 5 most recently modified files
-        results = service.files().list(
-            pageSize=5, 
-            orderBy="modifiedTime desc",
-            fields="files(name, mimeType)"
-        ).execute()
-        files = results.get('files', [])
-        
-        if not files:
-            return "No files found in your Google Drive."
-            
-        summary = "Here are your most recent Google Drive files:\n"
-        for file in files:
-            # Clean up the display type a bit
-            file_type = file['mimeType'].split('.')[-1].split('-')[-1].upper()
-            summary += f"- {file['name']} [{file_type}]\n"
-        return summary
-    except Exception as e:
-        return f"Error reading Google Drive: {e}"
-
-# --- Main Engine Layer ---
-
-def run_jarvis(user_message):
-    system_prompt = (
-        "You are Jarvis, a local desktop assistant.\n"
-        "You have access to four tool protocols. If the user asks for an action matching a tool, "
-        "you MUST reply with the exact tool execution line and absolutely nothing else.\n\n"
-        "Tools:\n"
-        "1. Open a website: TRIGGER_TOOL: open_browser | URL: <full_url>\n"
-        "2. Check emails: TRIGGER_TOOL: get_unread_emails\n"
-        "3. Check schedule: TRIGGER_TOOL: get_upcoming_events\n"
-        "4. Check Drive files: TRIGGER_TOOL: list_drive_files\n\n"
-        "If they are just chatting or asking a general question, answer normally as Jarvis."
-    )
+    history.append({'role': 'user', 'content': user_message})
     
-    print("\n🤖 Jarvis is processing...")
-    
+    # Attempt LLM tool calling
     try:
         response = ollama.chat(
-            model='qwen2.5:1.5b',
-            messages=[
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': user_message}
-            ]
+            model=MODEL_NAME,
+            messages=history,
+            tools=AGENT_TOOLS if is_admin else []
         )
         
-        reply = response['message']['content'].strip()
+        msg = response.get('message', {})
+        tool_calls = msg.get('tool_calls', [])
         
-        # Tool Routing Logic
-        if "TRIGGER_TOOL: open_browser" in reply:
-            parts = reply.split("| URL:")
-            if len(parts) > 1:
-                open_browser(parts[1].strip())
-            else:
-                print("Failed to parse URL.")
-        elif "TRIGGER_TOOL: get_unread_emails" in reply:
-            tool_result = get_unread_emails()
-            print(f"\nJarvis: {tool_result}")
-        elif "TRIGGER_TOOL: get_upcoming_events" in reply:
-            tool_result = get_upcoming_events()
-            print(f"\nJarvis: {tool_result}")
-        elif "TRIGGER_TOOL: list_drive_files" in reply:
-            tool_result = list_drive_files()
-            print(f"\nJarvis: {tool_result}")
-        else:
-            print(f"\nJarvis: {reply}")
+        if tool_calls:
+            # Execute the tool calls
+            history.append(msg)
+            for tool in tool_calls:
+                func_name = tool['function']['name']
+                args = tool['function']['arguments']
+                result = ""
+                try:
+                    if func_name == 'send_email':
+                        result = send_email_action(args['recipient'], args['subject'], args['body'], gmail_svc)
+                    elif func_name == 'add_calendar_event':
+                        result = add_calendar_event_action(args['event_title'], args['start_time'], args['end_time'], cal_svc)
+                    elif func_name == 'search_drive':
+                        result = search_drive_action(args['query'], drive_svc)
+                    elif func_name == 'web_search':
+                        result = web_search_action(args['query'])
+                    else:
+                        result = f"Unknown tool: {func_name}"
+                except Exception as e:
+                    result = f"Tool execution error: {e}"
+                history.append({'role': 'tool', 'content': result, 'name': func_name})
             
+            # Get final response after tool calls
+            final = ollama.chat(model=MODEL_NAME, messages=history)
+            reply = final['message']['content'].strip()
+            history.append({'role': 'assistant', 'content': reply})
+            return reply
+        
+        else:
+            # No tool calls – normal text response
+            reply = msg.get('content', '').strip()
+            if not reply:
+                # Empty response – fallback to keyword matching
+                fallback = keyword_fallback(user_message, gmail_svc, cal_svc, drive_svc)
+                if fallback:
+                    history.append({'role': 'assistant', 'content': fallback})
+                    return fallback
+                else:
+                    reply = "I'm here. How can I help?"
+            history.append({'role': 'assistant', 'content': reply})
+            return reply
+    
     except Exception as e:
-        print(f"\n❌ Local AI Engine Error: {e}")
+        # Ollama error – fallback to keyword matching
+        print(f"Ollama error: {e}")
+        fallback = keyword_fallback(user_message, gmail_svc, cal_svc, drive_svc)
+        if fallback:
+            history.append({'role': 'assistant', 'content': fallback})
+            return fallback
+        return f"Agent error: {e}"
+
+# --- FLASK ROUTES (unchanged) ---
+@app.route("/")
+def home(): 
+    return render_template("index.html")
+
+@app.route("/auth/status", methods=["GET"])
+def auth_status():
+    if 'username' in session:
+        return jsonify({"logged_in": True, "username": session['username']})
+    return jsonify({"logged_in": False})
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.json
+    username = data.get("username", "").strip().lower()
+    password = data.get("password", "")
+    users = load_users()
+    
+    if username in users:
+        if check_password_hash(users[username], password):
+            session['username'] = username
+            return jsonify({"success": True, "message": f"Welcome back, {username.capitalize()}."})
+        return jsonify({"success": False, "message": "Incorrect password."})
+    else:
+        if len(users) >= MAX_USERS:
+            return jsonify({"success": False, "message": "Max users reached."})
+        users[username] = generate_password_hash(password)
+        save_users(users)
+        session['username'] = username
+        return jsonify({"success": True, "message": f"Welcome, {username.capitalize()}."})
+
+@app.route("/auth/logout", methods=["POST"])
+def logout():
+    session.pop('username', None)
+    return jsonify({"success": True})
+
+@app.route("/auth/request_reset", methods=["POST"])
+def request_reset():
+    username = request.json.get("username", "").lower()
+    if username not in load_users():
+        return jsonify({"success": False, "message": "User not found."})
+    token = secrets.token_hex(3)
+    pending_resets[username] = token
+    print(f"\n[!!!] PASSWORD RESET REQUESTED [!!!]\nUser: {username}\nTOKEN: {token}\n----------------------------------\n")
+    return jsonify({"success": True, "message": "Check the server terminal for your token."})
+
+@app.route("/auth/confirm_reset", methods=["POST"])
+def confirm_reset():
+    data = request.json
+    u, t, p = data.get("username").lower(), data.get("token"), data.get("new_password")
+    if pending_resets.get(u) == t:
+        users = load_users()
+        users[u] = generate_password_hash(p)
+        save_users(users)
+        del pending_resets[u]
+        return jsonify({"success": True, "message": "Password updated successfully."})
+    return jsonify({"success": False, "message": "Invalid token."})
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    if 'username' not in session: 
+        return jsonify({"reply": "Unauthorized"}), 401
+    return jsonify({"reply": run_jarvis(session['username'], request.json.get("message", ""))})
+
+@app.route("/get_profile", methods=["GET"])
+def get_profile():
+    if 'username' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    profile = load_user_profile(session['username'])
+    return jsonify(profile)
+
+@app.route("/update_profile", methods=["POST"])
+def update_profile():
+    if 'username' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        new_profile = request.get_json()
+        if isinstance(new_profile, dict):
+            save_user_profile(session['username'], new_profile)
+            return jsonify({"success": True})
+        return jsonify({"error": "Invalid format"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("--- Jarvis Connected Infrastructure Launching ---")
-    print("[SYSTEM] Verifying secure token status...")
-    authenticate_google()
-    
-    while True:
-        prompt = input("\nYou: ")
-        if prompt.lower() == 'exit':
-            break
-        if prompt.strip():
-            run_jarvis(prompt)
+    app.run(host='0.0.0.0', port=5000, debug=False)
