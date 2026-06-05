@@ -1,363 +1,978 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jarvis Neural Link</title>
-    <style>
-        :root {
-            --bg-main: #FFFFFF; --bg-secondary: #F4F4F5;
-            --text-primary: #09090B; --text-secondary: #71717A;
-            --border-light: #E4E4E7; --accent-color: #D97757;
-            --btn-bg: #18181B; --btn-text: #FFFFFF;
-            --sidebar-width: 280px;
-            --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
-            --shadow-md: 0 8px 24px rgba(0,0,0,0.08);
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis</title>
 
-        body.dark-mode {
-            --bg-main: #09090B; --bg-secondary: #18181B;
-            --text-primary: #FAFAFA; --text-secondary: #A1A1AA;
-            --border-light: #27272A; --accent-color: #E2886D;
-            --btn-bg: #FAFAFA; --btn-text: #09090B;
-            --shadow-sm: 0 2px 8px rgba(0,0,0,0.4);
-            --shadow-md: 0 8px 24px rgba(0,0,0,0.6);
-        }
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
-        body { 
-            background-color: var(--bg-main); color: var(--text-primary); 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            margin: 0; height: 100vh; overflow: hidden;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
+  <!-- MathJax -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$','$'],['\\(','\\)']],
+        displayMath: [['$$','$$'],['\\[','\\]']],
+      },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
 
-        /* Custom Scrollbar for premium feel */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #191816;
+      --bg-panel:    #211f1c;
+      --bg-bubble:   #2a2825;
+      --bg-input:    #211f1c;
+      --border:      #35322d;
+      --text:        #f0ebe3;
+      --muted:       #8a8278;
+      --code-bg:     #141210;
 
-        #app-layout { display: flex; width: 100%; height: 100vh; }
+      /* default accent = Standard mode = Claude coral */
+      --accent:      #d07050;
+      --accent-dim:  rgba(208,112,80,0.12);
+      --accent-glow: rgba(208,112,80,0.25);
+    }
 
-        /* --- Sidebar Styling --- */
-        #sidebar {
-            width: var(--sidebar-width); background: var(--bg-secondary);
-            border-right: 1px solid var(--border-light);
-            display: flex; flex-direction: column; flex-shrink: 0;
-            transition: 0.3s;
-        }
-        
-        .sidebar-header {
-            padding: 24px 20px; font-weight: 600; border-bottom: 1px solid var(--border-light);
-            font-size: 13px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;
-            display: flex; justify-content: space-between; align-items: center;
-        }
+    /* ── Per-mode accents ──────────────────────────────────────────────────── */
+    body.mode-fast      { --accent:#4db8d4; --accent-dim:rgba(77,184,212,0.10); --accent-glow:rgba(77,184,212,0.22); }
+    body.mode-normal    { --accent:#d07050; --accent-dim:rgba(208,112,80,0.12); --accent-glow:rgba(208,112,80,0.25); }
+    body.mode-thinking  { --accent:#9b74d4; --accent-dim:rgba(155,116,212,0.10); --accent-glow:rgba(155,116,212,0.22); }
+    body.mode-code_math { --accent:#46b88a; --accent-dim:rgba(70,184,138,0.10); --accent-glow:rgba(70,184,138,0.22); }
 
-        #history-list { flex-grow: 1; overflow-y: auto; padding: 12px; }
+    /* ── Reset ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+      transition: --accent 0.25s;
+    }
 
-        .history-item {
-            padding: 12px 16px; margin-bottom: 6px; border-radius: 8px;
-            font-size: 14px; cursor: pointer; color: var(--text-primary);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            transition: all 0.2s ease; border: 1px solid transparent;
-        }
+    /* ── Scrollbars ─────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-        .history-item:hover {
-            background: var(--bg-main); border-color: var(--border-light);
-            box-shadow: var(--shadow-sm); transform: translateY(-1px);
-        }
+    /* ═══════════════════════════════════════════════════════════════════════════
+       AUTH SCREEN
+    ═══════════════════════════════════════════════════════════════════════════ */
+    #auth-screen {
+      position: fixed; inset: 0; z-index: 999;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-card {
+      width: 380px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 40px 36px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+      text-align: center;
+    }
+    .auth-logo {
+      width: 52px; height: 52px; margin: 0 auto 20px;
+      background: var(--accent);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 28px var(--accent-glow);
+    }
+    .auth-logo svg { width: 30px; height: 30px; }
+    .auth-card h2 {
+      font-size: 1.35rem; font-weight: 700;
+      letter-spacing: -0.3px; margin-bottom: 6px;
+    }
+    .auth-card p {
+      font-size: 0.82rem; color: var(--muted); margin-bottom: 28px;
+    }
+    .auth-input {
+      width: 100%; padding: 13px 16px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 0.95rem;
+      margin-bottom: 12px; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .auth-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .auth-btn {
+      width: 100%; padding: 13px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 10px;
+      font-size: 0.95rem; font-weight: 600; cursor: pointer;
+      margin-top: 4px;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    .auth-btn:hover  { filter: brightness(1.1); }
+    .auth-btn:active { transform: scale(0.98); }
+    #auth-error {
+      font-size: 0.82rem; color: #e05a5a;
+      font-weight: 500; margin-top: 12px;
+      min-height: 18px;
+    }
 
-        /* --- Main Content Area --- */
-        #main-content { flex-grow: 1; display: flex; flex-direction: column; height: 100vh; position: relative; }
+    /* ═══════════════════════════════════════════════════════════════════════════
+       APP LAYOUT
+    ═══════════════════════════════════════════════════════════════════════════ */
+    #app {
+      display: flex; height: 100vh;
+    }
 
-        header { 
-            width: 100%; display: flex; justify-content: space-between; align-items: center; 
-            padding: 16px 32px; border-bottom: 1px solid var(--border-light); 
-            flex-shrink: 0; box-sizing: border-box; background: var(--bg-main);
-        }
-        
-        header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
-        
-        #chat-container { 
-            width: 100%; max-width: 850px; margin: 0 auto; flex-grow: 1; 
-            padding: 40px 20px 20px 20px; overflow-y: auto; box-sizing: border-box; 
-        }
-        
-        .message { margin-bottom: 32px; display: flex; flex-direction: column; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    /* ── Sidebar ────────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: width 0.28s cubic-bezier(.4,0,.2,1),
+                  opacity 0.2s;
+    }
+    #sidebar.closed { width: 0; opacity: 0; border-right: none; }
 
-        .msg-header { font-weight: 600; font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; color: var(--text-secondary); }
-        .msg-bubble { line-height: 1.6; font-size: 15px; padding: 16px 20px; border-radius: 12px; background: var(--bg-secondary); box-shadow: var(--shadow-sm); display: inline-block; max-width: 90%; }
-        
-        .user { align-items: flex-end; }
-        .user .msg-bubble { background: var(--btn-bg); color: var(--btn-text); box-shadow: var(--shadow-md); }
-        .user .msg-header { flex-direction: row-reverse; }
+    .sidebar-top {
+      padding: 20px 16px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-label {
+      font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 1.4px; font-weight: 700; color: var(--muted);
+    }
+    .sidebar-clear {
+      font-size: 0.75rem; color: var(--muted);
+      background: none; border: none; cursor: pointer;
+      padding: 4px 8px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .sidebar-clear:hover { color: var(--text); background: var(--bg-bubble); }
 
-        .avatar { width: 28px; height: 28px; border-radius: 6px; display: flex; justify-content: center; align-items: center; font-size: 13px; font-weight: bold; color: white; background-color: var(--accent-color); box-shadow: var(--shadow-sm); }
-        .user .avatar { background-color: var(--text-secondary); }
-        
-        #input-wrapper { width: 100%; max-width: 850px; margin: 0 auto; padding: 0 20px 30px 20px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
-        
-        /* --- Quick Action Chips --- */
-        .action-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-        .chip {
-            background: var(--bg-main); border: 1px solid var(--border-light); 
-            color: var(--text-secondary); padding: 8px 14px; border-radius: 20px;
-            font-size: 12px; cursor: pointer; transition: all 0.2s ease;
-            display: flex; align-items: center; gap: 6px; font-weight: 500;
-        }
-        .chip:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--text-secondary); transform: translateY(-2px); }
+    #history-list {
+      flex: 1; overflow-y: auto;
+      padding: 10px 8px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .history-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: background 0.15s, color 0.15s;
+    }
+    .history-item:hover { background: var(--bg-bubble); color: var(--text); }
 
-        #input-area { display: flex; background: var(--bg-main); border: 1px solid var(--border-light); border-radius: 16px; padding: 8px; box-shadow: var(--shadow-md); transition: 0.3s; }
-        #input-area:focus-within { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.1); }
-        #user-input { flex-grow: 1; padding: 12px 16px; background: transparent; border: none; font-size: 15px; outline: none; color: var(--text-primary); }
-        
-        .send-btn { background-color: var(--btn-bg); color: var(--btn-text); border: none; padding: 0 24px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-        .send-btn:hover { transform: scale(1.02); opacity: 0.9; }
-        .action-btn { background: var(--bg-secondary); border: 1px solid var(--border-light); padding: 8px 16px; border-radius: 8px; font-weight: 500; cursor: pointer; color: var(--text-primary); transition: 0.2s; font-size: 13px; }
-        .action-btn:hover { background: var(--border-light); }
+    .sidebar-footer {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .signout-btn {
+      width: 100%; padding: 9px;
+      background: none; border: 1px solid #5a2a2a;
+      color: #d06060; border-radius: 8px;
+      font-size: 0.83rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .signout-btn:hover { background: #5a2a2a; color: #ff9090; }
 
-        /* Auth & Modals */
-        #auth-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 200; display: flex; justify-content: center; align-items: center; }
-        .auth-box { background-color: var(--bg-main); padding: 40px; border-radius: 24px; width: 90%; max-width: 400px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 15px; border: 1px solid var(--border-light); }
-        .auth-box h2 { font-weight: 700; margin: 0 0 10px 0; text-align: center; font-size: 24px;}
-        .auth-box input { padding: 14px 16px; border: 1px solid var(--border-light); border-radius: 10px; font-size: 15px; background: var(--bg-secondary); color: var(--text-primary); outline:none; }
-        .auth-box input:focus { border-color: var(--accent-color); }
-        
-        #settings-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 100; }
-        .modal-content { background: var(--bg-main); padding: 30px; border-radius: 16px; width: 90%; max-width: 600px; border: 1px solid var(--border-light); box-shadow: var(--shadow-md); }
-        textarea { width: 100%; height: 300px; font-family: 'Courier New', Courier, monospace; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-light); padding: 16px; box-sizing: border-box; border-radius: 8px; outline:none;}
+    /* ── Main ───────────────────────────────────────────────────────────────── */
+    #main {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column;
+    }
 
-        .thinking-indicator { display: flex; gap: 5px; padding: 16px 20px; background: var(--bg-secondary); border-radius: 12px; display: inline-flex; box-shadow: var(--shadow-sm); }
-        .dot { width: 6px; height: 6px; background-color: var(--text-secondary); border-radius: 50%; animation: pulse 1.5s infinite ease-in-out; }
-        .dot:nth-child(1) { animation-delay: 0s; }
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes pulse { 0%, 100% { transform: scale(0.8); opacity: 0.4; } 50% { transform: scale(1.2); opacity: 1; } }
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    #header {
+      height: 58px; flex-shrink: 0;
+      display: flex; align-items: center;
+      padding: 0 20px 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      gap: 14px;
+    }
+    .hamburger {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 6px; border-radius: 7px;
+      transition: background 0.15s, color 0.15s;
+      display: flex; align-items: center;
+    }
+    .hamburger:hover { background: var(--bg-bubble); color: var(--text); }
+    .hamburger svg { width: 18px; height: 18px; }
 
-        @media (max-width: 768px) { #sidebar { display: none; } }
-    </style>
+    #header-title {
+      font-size: 0.95rem; font-weight: 700;
+      letter-spacing: 0.5px; flex: 1;
+      color: var(--text);
+    }
+    #header-title span { color: var(--accent); transition: color 0.3s; }
+
+    .header-right {
+      display: flex; align-items: center; gap: 10px;
+    }
+    #username-badge {
+      font-size: 0.75rem; font-weight: 600;
+      color: var(--muted); letter-spacing: 0.3px;
+      text-transform: capitalize;
+    }
+    .header-btn {
+      background: var(--bg-bubble); border: 1px solid var(--border);
+      color: var(--muted); padding: 6px 12px;
+      border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    }
+    .header-btn:hover { color: var(--text); border-color: var(--muted); }
+
+    /* ── Chat area ──────────────────────────────────────────────────────────── */
+    #chat {
+      flex: 1; overflow-y: auto;
+      padding: 36px 0 20px;
+      scroll-behavior: smooth;
+    }
+    .chat-inner {
+      max-width: 780px; margin: 0 auto;
+      padding: 0 24px;
+      display: flex; flex-direction: column; gap: 28px;
+    }
+
+    /* ── Messages ───────────────────────────────────────────────────────────── */
+    .msg { display: flex; flex-direction: column; animation: fadeUp 0.22s ease both; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg-meta {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 8px;
+      font-size: 0.78rem; font-weight: 600;
+      color: var(--muted);
+    }
+    .avatar {
+      width: 24px; height: 24px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800;
+      flex-shrink: 0;
+    }
+    .avatar-jarvis {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 10px var(--accent-dim);
+      transition: background 0.3s;
+    }
+    .avatar-user { background: var(--bg-bubble); color: var(--muted); }
+
+    .msg.user { align-items: flex-end; }
+    .msg.user .msg-meta { flex-direction: row-reverse; }
+    .msg.user .msg-body {
+      background: var(--bg-bubble);
+      border: 1px solid var(--border);
+      border-radius: 14px 14px 2px 14px;
+      padding: 13px 18px;
+      max-width: 82%;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.jarvis .msg-body {
+      max-width: 100%;
+      line-height: 1.72;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Thinking indicator ─────────────────────────────────────────────────── */
+    .thinking {
+      display: flex; align-items: center; gap: 5px; padding: 4px 0;
+    }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); opacity: 0.7;
+      animation: blink 1.4s infinite ease-in-out;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink {
+      0%, 80%, 100% { transform: scale(0.8); opacity: 0.4; }
+      40%            { transform: scale(1.2); opacity: 1; }
+    }
+
+    /* ── Think block (DeepSeek R1) ──────────────────────────────────────────── */
+    .think-block {
+      background: rgba(155,116,212,0.06);
+      border-left: 2px solid #9b74d4;
+      border-radius: 0 10px 10px 0;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      font-style: italic;
+      color: #b8a0e8;
+      font-size: 0.88rem;
+      line-height: 1.65;
+    }
+    .think-label {
+      font-size: 0.72rem; font-weight: 700; font-style: normal;
+      text-transform: uppercase; letter-spacing: 1.2px;
+      color: #9b74d4; margin-bottom: 8px; display: block;
+    }
+
+    /* ── Code blocks ────────────────────────────────────────────────────────── */
+    .code-wrap {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 14px 0;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+    }
+    .code-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 14px;
+      background: #1c1a18;
+      border-bottom: 1px solid var(--border);
+    }
+    .code-lang {
+      font-size: 0.72rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .copy-btn {
+      font-size: 0.72rem; font-weight: 600;
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); border-radius: 5px;
+      padding: 3px 9px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--muted); }
+    .code-wrap pre {
+      margin: 0; padding: 16px;
+      overflow-x: auto;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.88rem; line-height: 1.55;
+    }
+    .code-wrap pre code { background: transparent; padding: 0; }
+    .inline-code {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.87em;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 2px 6px; border-radius: 5px;
+    }
+
+    /* ── Input area ─────────────────────────────────────────────────────────── */
+    #input-zone {
+      flex-shrink: 0;
+      padding: 0 24px 24px;
+    }
+    .input-inner {
+      max-width: 780px; margin: 0 auto;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    /* mode + chips row */
+    .controls-row {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      padding: 6px 12px;
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 0.77rem; font-weight: 500;
+      color: var(--muted); cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .chip:hover { color: var(--text); border-color: var(--muted); }
+    .chip.on {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Mode selector */
+    .mode-group {
+      display: flex;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .mode-btn {
+      padding: 7px 13px;
+      background: transparent; border: none;
+      border-radius: 7px;
+      font-size: 0.78rem; font-weight: 600;
+      color: var(--muted); cursor: pointer;
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .mode-btn:hover { color: var(--text); }
+    .mode-btn.active {
+      background: var(--bg);
+      color: var(--accent);
+      box-shadow: 0 1px 6px rgba(0,0,0,0.3);
+    }
+
+    /* Input box */
+    .input-box {
+      display: flex; align-items: center;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 6px 6px 6px 18px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-box:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    #msg-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text); font-size: 0.96rem;
+      padding: 9px 0;
+    }
+    #msg-input::placeholder { color: var(--muted); }
+    .send-btn {
+      padding: 9px 20px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 9px;
+      font-size: 0.83rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.3px;
+      transition: filter 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .send-btn:hover  { filter: brightness(1.1); }
+    .send-btn:active { transform: scale(0.97); }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       SETTINGS MODAL
+    ═══════════════════════════════════════════════════════════════════════════ */
+    #modal-bg {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    #modal-bg.open { display: flex; }
+    .modal {
+      width: 540px; max-width: 92vw;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+    }
+    .modal h3 {
+      font-size: 1rem; font-weight: 700; margin-bottom: 16px;
+    }
+    #profile-editor {
+      width: 100%; height: 260px;
+      background: var(--bg);
+      border: 1px solid var(--border); border-radius: 9px;
+      color: #d4c9b8; padding: 14px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.85rem; resize: none; outline: none;
+      line-height: 1.5;
+    }
+    #profile-editor:focus { border-color: var(--accent); }
+    .modal-actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+    }
+    .modal-cancel {
+      padding: 9px 18px;
+      background: none; border: 1px solid var(--border);
+      border-radius: 9px; color: var(--muted);
+      font-size: 0.85rem; cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .modal-cancel:hover { color: var(--text); border-color: var(--muted); }
+    .modal-save {
+      padding: 9px 20px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 9px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      transition: filter 0.15s;
+    }
+    .modal-save:hover { filter: brightness(1.1); }
+  </style>
 </head>
-<body>
 
-    <div id="auth-screen">
-        <div class="auth-box">
-            <h2>Jarvis Core</h2>
-            <input type="text" id="auth-username" placeholder="Username">
-            <input type="password" id="auth-password" placeholder="Password">
-            <button class="send-btn" style="padding: 14px; margin-top: 10px;" onclick="authenticate()">Authenticate</button>
-            <button class="action-btn" style="border:none; background:transparent; font-size: 13px;" onclick="requestReset()">Forgot Password?</button>
-            <div id="auth-error" style="text-align: center; min-height: 20px; font-size: 13px; color: #ef4444; font-weight:500;"></div>
+<body class="mode-normal">
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     AUTH SCREEN
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <!-- Claude-style asterisk logo -->
+    <div class="auth-logo">
+      <svg viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15 2L15 28M15 2L15 28M2 15L28 15M4.5 4.5L25.5 25.5M25.5 4.5L4.5 25.5"
+              stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <h2>Jarvis</h2>
+    <p>Sign in or create an account to continue</p>
+    <input class="auth-input" type="text"     id="auth-user" placeholder="Username"  autocomplete="off">
+    <input class="auth-input" type="password" id="auth-pass" placeholder="Password">
+    <button class="auth-btn" onclick="doAuth()">Continue</button>
+    <div id="auth-error"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SETTINGS MODAL
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="modal-bg">
+  <div class="modal">
+    <h3>Memory &amp; Profile</h3>
+    <textarea id="profile-editor" spellcheck="false"
+              placeholder='{"name": "Oliver", "goals": "..."}'></textarea>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-save"   onclick="saveProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-top">
+      <span class="sidebar-label">History</span>
+      <button class="sidebar-clear" onclick="clearHistory()">Clear</button>
+    </div>
+    <div id="history-list"></div>
+    <div class="sidebar-footer">
+      <button class="signout-btn" onclick="doLogout()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Header -->
+    <div id="header">
+      <button class="hamburger" onclick="toggleSidebar()" title="Toggle sidebar">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <line x1="2" y1="5"  x2="16" y2="5"/>
+          <line x1="2" y1="9"  x2="16" y2="9"/>
+          <line x1="2" y1="13" x2="16" y2="13"/>
+        </svg>
+      </button>
+      <div id="header-title">Jarvis <span id="mode-label">/ Standard</span></div>
+      <div class="header-right">
+        <span id="username-badge"></span>
+        <button class="header-btn" onclick="openModal()">Profile</button>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat">
+      <div class="chat-inner" id="chat-inner"></div>
+    </div>
+
+    <!-- Input zone -->
+    <div id="input-zone">
+      <div class="input-inner">
+
+        <!-- Row: chips + mode selector -->
+        <div class="controls-row">
+          <div class="chip-group">
+            <button class="chip" onclick="quickPrompt('Add a calendar event titled [Title] on [Date] from [Time] to [Time].')">
+              Add Event
+            </button>
+            <button class="chip" onclick="quickPrompt('What is on my calendar for the next 7 days?')">
+              My Schedule
+            </button>
+            <button class="chip" onclick="quickPrompt('Check my most recent emails.')">
+              Recent Emails
+            </button>
+            <button class="chip" id="search-chip" onclick="toggleSearch()">
+              Web Search: Off
+            </button>
+          </div>
+
+          <div class="mode-group">
+            <button class="mode-btn"        id="btn-fast"      onclick="setMode('fast')">Fast</button>
+            <button class="mode-btn active" id="btn-normal"    onclick="setMode('normal')">Standard</button>
+            <button class="mode-btn"        id="btn-thinking"  onclick="setMode('thinking')">Thinking</button>
+            <button class="mode-btn"        id="btn-code_math" onclick="setMode('code_math')">Code & Math</button>
+          </div>
         </div>
-    </div>
 
-    <div id="app-layout">
-        
-        <aside id="sidebar">
-            <div class="sidebar-header">
-                Memory Logs
-                <button class="action-btn" style="padding: 4px 10px; font-size: 11px;" onclick="clearHistory()">Clear</button>
-            </div>
-            <div id="history-list"></div>
-        </aside>
-
-        <main id="main-content">
-            <header>
-                <h1>Jarvis</h1>
-                <div class="header-controls" style="display:flex; gap: 10px; align-items:center;">
-                    <span id="display-username" style="margin-right: 15px; font-weight:500; font-size: 14px;"></span>
-                    <button class="action-btn" onclick="toggleTheme()">🌗 Theme</button>
-                    <button class="action-btn" onclick="openSettings()">⚙️ Core</button>
-                    <button class="action-btn" onclick="logout()">Sign Out</button>
-                </div>
-            </header>
-            
-            <div id="chat-container"></div>
-
-            <div id="input-wrapper">
-                <div class="action-chips">
-                    <div class="chip" onclick="insertPrompt(`Use your tool to add a calendar event. Title: '[TITLE]', Start: 'YYYY-MM-DDTHH:MM:SS', End: 'YYYY-MM-DDTHH:MM:SS'.`)">📅 Add Event</div>
-                    <div class="chip" onclick="insertPrompt(`What is on my Google Calendar for today?`)">🗓️ Check Calendar</div>
-                    <div class="chip" onclick="insertPrompt(`Send an email to [EMAIL] with the subject '[SUBJECT]' saying: [MESSAGE]`)">📧 Send Email</div>
-                </div>
-
-                <div id="input-area">
-                    <input type="text" id="user-input" placeholder="Message Jarvis..." onkeypress="handleKeyPress(event)">
-                    <button class="send-btn" onclick="sendMessage()">Send</button>
-                </div>
-            </div>
-        </main>
-
-    </div>
-
-    <div id="settings-modal">
-        <div class="modal-content">
-            <h2 style="margin-top:0;">Memory Core Parameters</h2>
-            <textarea id="profile-editor"></textarea>
-            <div style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button class="action-btn" onclick="closeSettings()">Cancel</button>
-                <button class="send-btn" style="padding: 8px 24px;" onclick="saveSettings()">Save Configuration</button>
-            </div>
+        <!-- Input box -->
+        <div class="input-box">
+          <input id="msg-input" type="text"
+                 placeholder="Ask anything…"
+                 onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMsg();}">
+          <button class="send-btn" onclick="sendMsg()">Send</button>
         </div>
+
+      </div>
     </div>
 
-    <script>
-        // --- Feature: Auto-insert text from Chips ---
-        function insertPrompt(text) {
-            const input = document.getElementById('user-input');
-            input.value = text;
-            input.focus();
-            // Highlight the first bracketed text so the user can easily type over it
-            const firstBracket = text.indexOf('[');
-            const lastBracket = text.indexOf(']');
-            if (firstBracket !== -1 && lastBracket !== -1) {
-                input.setSelectionRange(firstBracket, lastBracket + 1);
-            }
-        }
+  </div><!-- /main -->
+</div><!-- /app -->
 
-        // --- Feature: Starting Greeting ---
-        function triggerWelcomeMessage() {
-            const container = document.getElementById("chat-container");
-            // Only greet if the chat is currently empty
-            if (container.innerHTML.trim() === "") {
-                const welcomeText = "Good day. I am Jarvis. All core systems and neural links are online. How may I assist you today?";
-                container.innerHTML += `
-                    <div class="message jarvis">
-                        <div class="msg-header"><div class="avatar">✦</div>Jarvis</div>
-                        <div class="msg-bubble">${welcomeText}</div>
-                    </div>`;
-            }
-        }
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════════════════════════════ */
+let currentMode   = 'normal';
+let searchEnabled = false;
+let sidebarOpen   = true;
 
-        // --- Dark Mode Logic ---
-        function toggleTheme() {
-            document.body.classList.toggle('dark-mode');
-            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-        }
-        if (localStorage.getItem('theme') === 'dark') {
-            document.body.classList.add('dark-mode');
-        }
+const MODE_LABELS = {
+  fast:      'Fast',
+  normal:    'Standard',
+  thinking:  'Thinking',
+  code_math: 'Code & Math',
+};
 
-        // --- History Array Logic ---
-        let chatHistoryArray = JSON.parse(localStorage.getItem('jarvis_history')) || [];
+/* ═══════════════════════════════════════════════════════════════════════════
+   Auth
+═══════════════════════════════════════════════════════════════════════════ */
+async function doAuth() {
+  const user = document.getElementById('auth-user').value.trim();
+  const pass = document.getElementById('auth-pass').value;
+  const errEl = document.getElementById('auth-error');
+  errEl.textContent = '';
 
-        function renderSidebar() {
-            const list = document.getElementById("history-list");
-            list.innerHTML = "";
-            [...chatHistoryArray].reverse().forEach(item => {
-                list.innerHTML += `<div class="history-item" onclick="loadHistoryItem('${item.id}')">${item.title}</div>`;
-            });
-        }
+  if (!user || !pass) { errEl.textContent = 'Username and password required.'; return; }
 
-        function saveToHistory(userText, jarvisReply) {
-            const newItem = {
-                id: Date.now().toString(),
-                title: userText,
-                user: userText,
-                jarvis: jarvisReply
-            };
-            chatHistoryArray.push(newItem);
-            localStorage.setItem('jarvis_history', JSON.stringify(chatHistoryArray));
-            renderSidebar();
-        }
+  const res  = await fetch('/auth/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username: user, password: pass}),
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('auth-screen').style.display = 'none';
+    onLoggedIn(user);
+  } else {
+    errEl.textContent = data.message;
+  }
+}
 
-        function loadHistoryItem(id) {
-            const item = chatHistoryArray.find(x => x.id === id);
-            if (!item) return;
-            const container = document.getElementById("chat-container");
-            container.innerHTML += `
-                <div style="text-align: center; font-size: 11px; font-weight:600; text-transform:uppercase; color: var(--text-secondary); margin: 30px 0 20px 0; letter-spacing: 1px;">--- Memory Log Retrieved ---</div>
-                <div class="message user"><div class="msg-header"><div class="avatar">U</div>User</div><div class="msg-bubble">${item.user}</div></div>
-                <div class="message jarvis"><div class="msg-header"><div class="avatar">✦</div>Jarvis</div><div class="msg-bubble">${item.jarvis}</div></div>
-            `;
-            container.scrollTop = container.scrollHeight;
-        }
+async function checkAuth() {
+  const res  = await fetch('/auth/status');
+  const data = await res.json();
+  if (data.logged_in) {
+    document.getElementById('auth-screen').style.display = 'none';
+    onLoggedIn(data.username);
+  }
+}
 
-        function clearHistory() {
-            if(confirm("Clear all local memory logs?")) {
-                chatHistoryArray = [];
-                localStorage.removeItem('jarvis_history');
-                renderSidebar();
-            }
-        }
+function onLoggedIn(username) {
+  document.getElementById('username-badge').textContent = username;
+  renderHistory();
+  appendJarvisMsg("System online. How can I help, " + capitalize(username) + "?");
+}
 
-        // --- Core Application Logic ---
-        async function authenticate() {
-            const u = document.getElementById("auth-username").value;
-            const p = document.getElementById("auth-password").value;
-            const res = await fetch("/auth/login", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({username: u, password: p})
-            });
-            const data = await res.json();
-            if (data.success) { location.reload(); }
-            else { document.getElementById("auth-error").innerText = data.message; }
-        }
+async function doLogout() {
+  await fetch('/auth/logout', {method:'POST'});
+  location.reload();
+}
 
-        async function requestReset() { /* Existing reset logic */ }
+/* ═══════════════════════════════════════════════════════════════════════════
+   Mode
+═══════════════════════════════════════════════════════════════════════════ */
+function setMode(mode) {
+  currentMode = mode;
+  document.body.className = `mode-${mode}`;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`btn-${mode}`).classList.add('active');
+  document.getElementById('mode-label').textContent = `/ ${MODE_LABELS[mode]}`;
+}
 
-        async function sendMessage() {
-            const input = document.getElementById("user-input");
-            const text = input.value.trim();
-            if (!text) return;
-            
-            const container = document.getElementById("chat-container");
-            container.innerHTML += `<div class="message user"><div class="msg-header"><div class="avatar">U</div>User</div><div class="msg-bubble">${text}</div></div>`;
-            input.value = "";
-            container.scrollTop = container.scrollHeight;
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sidebar
+═══════════════════════════════════════════════════════════════════════════ */
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('closed', !sidebarOpen);
+}
 
-            const thinkingId = "thinking-" + Date.now();
-            container.innerHTML += `
-                <div class="message jarvis" id="${thinkingId}">
-                    <div class="msg-header"><div class="avatar">✦</div>Jarvis</div>
-                    <div class="thinking-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-                </div>`;
-            container.scrollTop = container.scrollHeight;
-            
-            try {
-                const response = await fetch("/chat", {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: text })
-                });
-                const data = await response.json();
-                
-                document.getElementById(thinkingId).remove();
-                container.innerHTML += `<div class="message jarvis"><div class="msg-header"><div class="avatar">✦</div>Jarvis</div><div class="msg-bubble">${data.reply}</div></div>`;
-                container.scrollTop = container.scrollHeight;
+/* ═══════════════════════════════════════════════════════════════════════════
+   Search toggle
+═══════════════════════════════════════════════════════════════════════════ */
+function toggleSearch() {
+  searchEnabled = !searchEnabled;
+  const chip = document.getElementById('search-chip');
+  chip.textContent = `Web Search: ${searchEnabled ? 'On' : 'Off'}`;
+  chip.classList.toggle('on', searchEnabled);
+}
 
-                saveToHistory(text, data.reply);
-            } catch (error) {
-                document.getElementById(thinkingId).remove();
-                container.innerHTML += `<div class="message jarvis" style="color:#ef4444;"><div class="msg-header"><div class="avatar" style="background:#ef4444;">!</div>Error</div><div class="msg-bubble">System error connecting to neural link.</div></div>`;
-            }
-        }
+/* ═══════════════════════════════════════════════════════════════════════════
+   Quick prompts
+═══════════════════════════════════════════════════════════════════════════ */
+function quickPrompt(text) {
+  const inp = document.getElementById('msg-input');
+  inp.value = text;
+  inp.focus();
+}
 
-        function handleKeyPress(e) { if (e.key === "Enter") sendMessage(); }
-        
-        async function openSettings() {
-            const res = await fetch("/get_profile");
-            const data = await res.json();
-            document.getElementById("profile-editor").value = JSON.stringify(data, null, 4);
-            document.getElementById("settings-modal").style.display = "flex";
-        }
-        function closeSettings() { document.getElementById("settings-modal").style.display = "none"; }
-        async function saveSettings() {
-            const val = document.getElementById("profile-editor").value;
-            await fetch("/update_profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: val });
-            closeSettings();
-        }
-        async function logout() { await fetch("/auth/logout", {method: "POST"}); location.reload(); }
-        
-        window.onload = async () => {
-            renderSidebar(); 
-            const res = await fetch("/auth/status");
-            const data = await res.json();
-            if (data.logged_in) {
-                document.getElementById("auth-screen").style.display = "none";
-                document.getElementById("display-username").innerText = data.username;
-                triggerWelcomeMessage(); // Triggers the starting greeting!
-            }
-        };
-    </script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Messaging
+═══════════════════════════════════════════════════════════════════════════ */
+async function sendMsg() {
+  const inp  = document.getElementById('msg-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+
+  appendUserMsg(text);
+
+  // Thinking indicator
+  const thinkId = `think-${Date.now()}`;
+  appendJarvisThinking(thinkId);
+
+  try {
+    const res  = await fetch('/chat', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message:        text,
+        search_enabled: searchEnabled,
+        agent_mode:     currentMode,
+      }),
+    });
+    const data = await res.json();
+    removeEl(thinkId);
+    appendJarvisMsg(data.reply);
+    saveHistory(text, data.reply);
+  } catch (err) {
+    removeEl(thinkId);
+    appendJarvisMsg('Connection error. Is Jarvis running?');
+  }
+}
+
+/* ── DOM helpers ──────────────────────────────────────────────────────────── */
+function appendUserMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'msg user';
+  el.innerHTML = `
+    <div class="msg-meta">
+      <div class="avatar avatar-user">U</div>
+      <span>You</span>
+    </div>
+    <div class="msg-body">${esc(text)}</div>
+  `;
+  getChatInner().appendChild(el);
+  scrollBottom();
+}
+
+function appendJarvisMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'msg jarvis';
+  el.innerHTML = `
+    <div class="msg-meta">
+      <div class="avatar avatar-jarvis">✦</div>
+      <span>Jarvis</span>
+    </div>
+    <div class="msg-body">${formatReply(text)}</div>
+  `;
+  getChatInner().appendChild(el);
+  scrollBottom();
+  if (window.MathJax) MathJax.typesetPromise([el]).catch(console.warn);
+  el.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  return el;
+}
+
+function appendJarvisThinking(id) {
+  const el = document.createElement('div');
+  el.id = id;
+  el.className = 'msg jarvis';
+  el.innerHTML = `
+    <div class="msg-meta">
+      <div class="avatar avatar-jarvis">✦</div>
+      <span>Jarvis</span>
+    </div>
+    <div class="msg-body">
+      <div class="thinking">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      </div>
+    </div>
+  `;
+  getChatInner().appendChild(el);
+  scrollBottom();
+}
+
+function removeEl(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function getChatInner() { return document.getElementById('chat-inner'); }
+function scrollBottom() {
+  const chat = document.getElementById('chat');
+  chat.scrollTop = chat.scrollHeight;
+}
+
+/* ── Text formatting ─────────────────────────────────────────────────────── */
+function formatReply(raw) {
+  // We use null-byte placeholders so HTML block insertions
+  // don't get mangled by the later newline → <br> pass.
+  const blocks = [];
+  let n = 0;
+
+  // 1. <think>…</think>  (DeepSeek R1 chain-of-thought)
+  //    Also handle legacy <thought> tags just in case.
+  let t = raw.replace(/<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/gi, (_, c) => {
+    const ph = `\x00B${n}\x00`;
+    const inner = c.trim()
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\n/g,'<br>');
+    blocks[n++] = `<div class="think-block"><span class="think-label">Reasoning trace</span>${inner}</div>`;
+    return ph;
+  });
+
+  // 2. Fenced code blocks  ```lang\ncode\n```
+  t = t.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const ph = `\x00B${n}\x00`;
+    const safe = code.trim()
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    blocks[n++] = [
+      '<div class="code-wrap">',
+        '<div class="code-header">',
+          `<span class="code-lang">${lang||'code'}</span>`,
+          '<button class="copy-btn" onclick="copyCode(this)">Copy</button>',
+        '</div>',
+        `<pre><code class="language-${lang||'plaintext'}">${safe}</code></pre>`,
+      '</div>',
+    ].join('');
+    return ph;
+  });
+
+  // 3. Escape remaining text so we don't inject arbitrary HTML
+  t = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // 4. Inline code  `...`
+  t = t.replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>');
+
+  // 5. Bold  **...**
+  t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // 6. Newlines → <br>  (only in the plain-text portions now)
+  t = t.replace(/\n/g, '<br>');
+
+  // 7. Re-inject HTML blocks
+  t = t.replace(/\x00B(\d+)\x00/g, (_, i) => blocks[+i]);
+
+  return t;
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+function copyCode(btn) {
+  const code = btn.closest('.code-wrap').querySelector('pre').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    btn.style.color = 'var(--accent)';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   History (localStorage)
+═══════════════════════════════════════════════════════════════════════════ */
+let history = JSON.parse(localStorage.getItem('jarvis_history') || '[]');
+
+function saveHistory(user, jarvis) {
+  history.push({ id: Date.now(), title: user.slice(0,48), user, jarvis });
+  localStorage.setItem('jarvis_history', JSON.stringify(history.slice(-120)));
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  list.innerHTML = '';
+  [...history].reverse().forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'history-item';
+    el.textContent = item.title;
+    el.title = item.title;
+    el.onclick = () => replayItem(item);
+    list.appendChild(el);
+  });
+}
+
+function replayItem(item) {
+  appendUserMsg(item.user);
+  appendJarvisMsg(item.jarvis);
+}
+
+function clearHistory() {
+  if (!confirm('Clear all local history?')) return;
+  history = [];
+  localStorage.removeItem('jarvis_history');
+  renderHistory();
+  // also clear server-side session history
+  fetch('/clear_history', {method:'POST'});
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Profile modal
+═══════════════════════════════════════════════════════════════════════════ */
+async function openModal() {
+  const res  = await fetch('/get_profile');
+  const data = await res.json();
+  document.getElementById('profile-editor').value = JSON.stringify(data, null, 2);
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('open');
+}
+
+async function saveProfile() {
+  const val = document.getElementById('profile-editor').value;
+  try {
+    const parsed = JSON.parse(val);
+    await fetch('/update_profile', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(parsed),
+    });
+    closeModal();
+  } catch {
+    alert('Invalid JSON — fix the syntax and try again.');
+  }
+}
+
+// close modal on backdrop click
+document.getElementById('modal-bg').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-bg')) closeModal();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════════════════════════════ */
+function capitalize(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Boot
+═══════════════════════════════════════════════════════════════════════════ */
+window.onload = checkAuth;
+</script>
+
 </body>
 </html>
