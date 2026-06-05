@@ -1,54 +1,54 @@
 from PIL import Image
 
-# Define our crisp, 16x16 pixel matrix layout
-# . = Background, C = Neon Cyan, B = Electric Blue, W = White Highlight
+# ── Claude-inspired asterisk logo ─────────────────────────────────────────────
+#
+# 6-arm asterisk (3 lines crossing at 60°):  vertical  +  two diagonals
+# Warm terracotta on deep charcoal — Claude's visual identity.
+#
+# Legend:
+#   . = Charcoal background
+#   O = Claude coral / terracotta  (#d07050)
+#   H = Bright highlight            (#e8a088)
+
 PIXEL_ART = [
-    "....CCCCCC......",
-    "..CCBBWWBBCC....",
-    ".CBBWCCCCWBBC...",
-    ".CBWCCCCCCWBC...",
-    "CWCWW....WWCWC..",
-    "CWCW..WW..WCWC..",
-    "CWCW..WW..WCWC..",
-    "CWCWW....WWCWC..",
-    "CWC..WWWW..CWC..",
-    ".CBW..WW..WBC...",
-    ".CBBW....WBBC...",
-    "..CCBBWWBBCC....",
-    "....CCCCCC......",
-    "......CC........",
-    "................",
-    "................"
+    "................",   # 0
+    ".......OO.......",   # 1  top of vertical bar
+    ".......OO.......",   # 2
+    "..O....OO....O..",   # 3  diagonal arms appear
+    "...O...OO...O...",   # 4
+    "....HOOOOOOH....",   # 5  convergence zone
+    "OOOHOOOOOOOHOOOO",   # 6  full horizontal bar
+    "OOOHOOOOOOOHOOOO",   # 7  (2-pixel thick for weight)
+    "....HOOOOOOH....",   # 8
+    "...O...OO...O...",   # 9
+    "..O....OO....O..",   # 10
+    ".......OO.......",   # 11
+    ".......OO.......",   # 12
+    "................",   # 13
+    "................",   # 14
+    "................",   # 15
 ]
 
-# Map characters to precise RGB hex color values
 COLOR_PALETTE = {
-    ".": (17, 22, 37),    # Deep Space Charcoal (Background)
-    "C": (0, 240, 255),   # Neon Cyan
-    "B": (0, 102, 255),   # Electric Blue
-    "W": (255, 255, 255)  # Pure White
+    ".": (25,  24,  22),    # Deep charcoal  (#191816)
+    "O": (208, 112, 80),    # Claude coral   (#d07050)
+    "H": (232, 160, 136),   # Warm highlight (#e8a088)
 }
 
-def generate_logo():
-    # 1. Create a tiny 16x16 canvas
-    height = len(PIXEL_ART)
-    width = len(PIXEL_ART[0])
-    img = Image.new("RGB", (width, height))
-    pixels = img.load()
+def generate_logo(out_path="jarvis_logo.png", px_size=512):
+    rows = len(PIXEL_ART)
+    cols = len(PIXEL_ART[0])
+    img  = Image.new("RGB", (cols, rows))
+    pix  = img.load()
 
-    # 2. Paint the matrix pixel by pixel
-    for y in range(height):
-        for x in range(width):
-            char = PIXEL_ART[y][x]
-            pixels[x, y] = COLOR_PALETTE.get(char, (0, 0, 0))
+    for y, row in enumerate(PIXEL_ART):
+        for x, ch in enumerate(row):
+            pix[x, y] = COLOR_PALETTE.get(ch, (0, 0, 0))
 
-    # 3. Blow it up to 512x512 using NEAREST to preserve crisp pixel edges
-    output_size = (512, 512)
-    crisp_logo = img.resize(output_size, resample=Image.Resampling.NEAREST)
-
-    # 4. Save to your folder
-    crisp_logo.save("jarvis_logo.png")
-    print("🎯 Success! jarvis_logo.png generated cleanly in your project folder.")
+    # Scale up with nearest-neighbour to preserve crisp pixel edges
+    logo = img.resize((px_size, px_size), resample=Image.Resampling.NEAREST)
+    logo.save(out_path)
+    print(f"Logo saved → {out_path}  ({px_size}×{px_size}px)")
 
 if __name__ == "__main__":
     generate_logo()
